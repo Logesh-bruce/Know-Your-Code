@@ -6,7 +6,9 @@ import {
   estimateLineCount,
   fetchFileContent,
   getRepoMetadata,
+  GitHubRateLimitError,
   listRepoFiles,
+  logGithubRateLimitOnce,
   parseRepoUrl,
 } from "@/services/githubService";
 
@@ -26,6 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ref = parseRepoUrl(repoUrl);
+    void logGithubRateLimitOnce();
     const [metadata, files] = await Promise.all([
       getRepoMetadata(ref),
       listRepoFiles(ref),
@@ -53,6 +56,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(analysis);
   } catch (err) {
+    if (err instanceof GitHubRateLimitError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
     const message =
       err instanceof Error ? err.message : "Something went wrong";
     const status = message.includes("Not Found") ? 404 : 500;

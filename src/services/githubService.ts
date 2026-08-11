@@ -13,6 +13,16 @@ export interface RepoMetadata {
   language?: string;
 }
 
+export class GitHubRateLimitError extends Error {
+  resetAt: number;
+
+  constructor(message: string, resetAt: number = 0) {
+    super(message);
+    this.name = "GitHubRateLimitError";
+    this.resetAt = resetAt;
+  }
+}
+
 /**
  * Accepts either a full GitHub URL or an "owner/repo" shorthand.
  */
@@ -54,19 +64,155 @@ export function getGithubToken(): string | undefined {
   return process.env.GITHUB_TOKEN || undefined;
 }
 
+let warnedNoToken = false;
+
+function warnMissingToken(): void {
+  if (warnedNoToken) return;
+  warnedNoToken = true;
+  console.warn(
+    "[KnowYourCode] WARNING: GITHUB_TOKEN is not set. GitHub API calls are rate-limited to 60/hour from this IP. Add a token to your .env file to raise this limit."
+  );
+}
+
 function createOctokit(): Octokit {
   const token = getGithubToken();
+  if (!token) warnMissingToken();
   return token ? new Octokit({ auth: token }) : new Octokit();
+}
+
+/* --- Rate-limit detection, backoff and typed failures --- */
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const RATE_LIMIT_MESSAGE = /rate limit|quota|abuse/i;
+
+type GithubErrorLike = {
+  status?: number;
+  message?: string;
+  response?: {
+    headers?: Record<string, string | number | undefined>;
+  };
+};
+
+function toErrorLike(err: unknown): GithubErrorLike {
+  return (err ?? {}) as GithubErrorLike;
+}
+
+function parseResetHeader(
+  headers?: Record<string, string | number | undefined>
+): number {
+  const value = headers?.["x-ratelimit-reset"];
+  if (value === undefined) return 0;
+  const seconds = typeof value === "number" ? value : parseInt(String(value), 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const e = toErrorLike(err);
+  return (
+    e.status === 403 &&
+    typeof e.message === "string" &&
+    RATE_LIMIT_MESSAGE.test(e.message)
+  );
+}
+
+function buildRateLimitMessage(resetAt: number): string {
+  if (!resetAt) {
+    return "GitHub API rate limit exceeded. Wait about an hour and retry, or add a GITHUB_TOKEN to your .env file to raise the limit.";
+  }
+  const minutes = Math.max(1, Math.ceil((resetAt - Date.now()) / 60000));
+  const when =
+    minutes > 60
+      ? `in ~${Math.round(minutes / 60)}h`
+      : `in ~${minutes} min`;
+  return `GitHub API rate limit exceeded. Rate limit resets ${when}, or add a GITHUB_TOKEN to your .env file to raise the limit.`;
+}
+
+function asRateLimitError(err: unknown, resetAt: number): GitHubRateLimitError {
+  if (err instanceof GitHubRateLimitError) return err;
+  const e = toErrorLike(err);
+  const detail = e.message ? ` (${e.message})` : "";
+  return new GitHubRateLimitError(buildRateLimitMessage(resetAt) + detail, resetAt);
+}
+
+/**
+ * Runs a GitHub API call with a single retry on rate-limit and transient
+ * (5xx/network) failures.
+ * - Rate limit: waits only when the reset is imminent (<20s); otherwise it
+ *   throws a typed `GitHubRateLimitError` immediately so callers fail loudly.
+ * - Transient errors: one quick retry, then rethrow the original error.
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  context: string
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (err) {
+    if (isRateLimitError(err)) {
+      const resetAt = parseResetHeader(toErrorLike(err).response?.headers);
+      const waitMs = resetAt ? resetAt - Date.now() : 0;
+      if (waitMs > 0 && waitMs <= 20_000) {
+        console.warn(
+          `[KnowYourCode] GitHub rate limit near reset; retrying ${context} in ${Math.ceil((waitMs + 500) / 1000)}s`
+        );
+        await sleep(waitMs + 500);
+        try {
+          return await operation();
+        } catch (second) {
+          throw asRateLimitError(second, resetAt);
+        }
+      }
+      throw asRateLimitError(err, resetAt);
+    }
+
+    const e = toErrorLike(err);
+    if (!e.status || e.status >= 500) {
+      await sleep(800);
+      try {
+        return await operation();
+      } catch {
+        throw err;
+      }
+    }
+    throw err;
+  }
+}
+
+/** Log GitHub API quota once per process in development (uses the free rate-limit endpoint). */
+let didLogRateLimit = false;
+
+export async function logGithubRateLimitOnce(): Promise<void> {
+  if (process.env.NODE_ENV !== "development" || didLogRateLimit) return;
+  didLogRateLimit = true;
+  try {
+    const octokit = createOctokit();
+    const { data } = await octokit.rest.rateLimit.get();
+    const remaining = data.rate.remaining;
+    const resetInMin = Math.max(
+      1,
+      Math.round((data.rate.reset * 1000 - Date.now()) / 60000)
+    );
+    console.log(
+      `[KnowYourCode] GitHub API: ${data.rate.limit}/hr limit, ${remaining} remaining (resets in ~${resetInMin} min)`
+    );
+  } catch {
+    /* Non-fatal — the quota log is informational only. */
+  }
 }
 
 export async function getRepoMetadata(
   ref: GithubRepoRef
 ): Promise<RepoMetadata> {
   const octokit = createOctokit();
-  const { data } = await octokit.rest.repos.get({
-    owner: ref.owner,
-    repo: ref.repo,
-  });
+  const { data } = await withRetry(
+    () =>
+      octokit.rest.repos.get({
+        owner: ref.owner,
+        repo: ref.repo,
+      }),
+    `metadata for ${ref.owner}/${ref.repo}`
+  );
   return {
     name: data.name,
     description: data.description ?? "",
@@ -80,12 +226,16 @@ export async function fetchFileContent(
   path: string
 ): Promise<string> {
   const octokit = createOctokit();
-  const response = await octokit.rest.repos.getContent({
-    owner: ref.owner,
-    repo: ref.repo,
-    path,
-    mediaType: { format: "raw" },
-  });
+  const response = await withRetry(
+    () =>
+      octokit.rest.repos.getContent({
+        owner: ref.owner,
+        repo: ref.repo,
+        path,
+        mediaType: { format: "raw" },
+      }),
+    `content of ${path}`
+  );
   return typeof response.data === "string" ? response.data : "";
 }
 
@@ -94,12 +244,16 @@ export async function listRepoFiles(
 ): Promise<RepoFile[]> {
   const octokit = createOctokit();
   const meta = await getRepoMetadata(ref);
-  const tree = await octokit.rest.git.getTree({
-    owner: ref.owner,
-    repo: ref.repo,
-    tree_sha: meta.defaultBranch,
-    recursive: "1",
-  });
+  const tree = await withRetry(
+    () =>
+      octokit.rest.git.getTree({
+        owner: ref.owner,
+        repo: ref.repo,
+        tree_sha: meta.defaultBranch,
+        recursive: "1",
+      }),
+    `file tree for ${ref.owner}/${ref.repo}`
+  );
 
   return (tree.data.tree ?? [])
     .filter((item) => item.path)
@@ -284,10 +438,16 @@ export function detectTechStack(
   return stack.slice(0, 6);
 }
 
+/**
+ * Estimates total lines by sampling a small number of text files
+ * (default 10, fetched 3-at-a-time) — a bounded, eager reading window so
+ * analysis never downloads the whole repository in one burst.
+ * Rate-limit errors abort immediately so the caller can surface a clear 429.
+ */
 export async function estimateLineCount(
   ref: GithubRepoRef,
   files: RepoFile[],
-  limit = 40
+  limit = 10
 ): Promise<number> {
   const textFiles = files
     .filter((f) => f.type === "file")
@@ -296,15 +456,28 @@ export async function estimateLineCount(
 
   let total = 0;
   let counted = 0;
-  await Promise.all(
-    textFiles.map(async (file) => {
-      const code = await fetchFileContent(ref, file.path).catch(() => null);
-      if (code !== null && code !== "") {
-        total += code.split("\n").length;
+  const CONCURRENCY = 3;
+
+  for (let i = 0; i < textFiles.length; i += CONCURRENCY) {
+    const batch = textFiles.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (file) => {
+        try {
+          const code = await fetchFileContent(ref, file.path);
+          return { code };
+        } catch (err) {
+          if (err instanceof GitHubRateLimitError) throw err;
+          return { code: null };
+        }
+      })
+    );
+    for (const result of results) {
+      if (result.code && result.code !== "") {
+        total += result.code.split("\n").length;
         counted += 1;
       }
-    })
-  );
+    }
+  }
 
   if (counted === 0) return 0;
   const totalFiles = files.filter((f) => f.type === "file").length;

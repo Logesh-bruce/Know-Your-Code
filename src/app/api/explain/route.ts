@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { explainCode } from "@/services/llmService";
 import {
   fetchFileContent,
+  GitHubRateLimitError,
   parseRepoUrl,
 } from "@/services/githubService";
 
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ...explanation, code });
   } catch (err) {
+    if (err instanceof GitHubRateLimitError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
     return NextResponse.json(
       {
         error:

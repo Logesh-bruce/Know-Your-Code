@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { RepoAnalysis } from "@/types/repo";
+import { postJson } from "@/utils/api";
 import { SESSION_KEY } from "@/utils/validation";
 
 export type AnalysisStatus = "idle" | "loading" | "success" | "error";
@@ -24,18 +25,11 @@ export function useRepoAnalysis() {
     setLastUrl(targetUrl);
     setState({ status: "loading", repo: null, error: null });
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl: targetUrl }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error ?? `Analysis failed (${response.status})`);
-      }
-      const repo = (await response.json()) as RepoAnalysis;
+      const repo = await postJson<RepoAnalysis>(
+        "/api/analyze",
+        { repoUrl: targetUrl },
+        20_000
+      );
       setState({ status: "success", repo, error: null });
     } catch (err) {
       setState({

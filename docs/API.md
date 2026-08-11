@@ -57,6 +57,7 @@ Analyzes a GitHub repository and returns its structure and summary.
 
 - `400` — `repoUrl` is missing
 - `404` — repository not found
+- `429` — GitHub API rate limit exceeded (includes the reset time)
 - `500` — GitHub API or other failure
 
 > `id` is set to `owner/repo` and is used as the `repoId` for the other
@@ -104,6 +105,7 @@ second request. `deepDive` is optional.
 
 - `400` — `repoId` or `filePath` is missing
 - `404` — file could not be fetched from GitHub
+- `429` — GitHub API rate limit exceeded (includes the reset time)
 - `500` — analysis failure
 
 ---
@@ -142,6 +144,7 @@ the start of each option string.
 
 - `400` — `repoId` is missing
 - `422` — no source files or no questions could be generated
+- `429` — GitHub API rate limit exceeded (includes the reset time)
 - `500` — failure
 
 ---
@@ -182,4 +185,5 @@ sent to the model.
 **Errors**
 
 - `400` — `repoId` is missing
+- `429` — GitHub API rate limit exceeded (includes the reset time)
 - `500` — failure

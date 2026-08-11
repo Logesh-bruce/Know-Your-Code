@@ -95,8 +95,11 @@ not be read. This usually means the file was renamed between the tree listing
 and the fetch; retry.
 
 **Slow analysis on large repositories** — line counts are estimated from a
-sample of up to 40 text files. Large monorepos take longer; a token speeds up
+sample of up to 10 text files. Large monorepos take longer; a token speeds up
 rate-limited fetches.
 
-**GitHub rate-limit errors (403)** — add a `GITHUB_TOKEN`. The app issues one
-request for the metadata, one for the file tree, and one per sampled file.
+**GitHub rate-limit errors (429 or 403)** — add a `GITHUB_TOKEN`. The app issues
+one request for the metadata, one for the file tree, and a handful of sampled
+file fetches. Without a token you are limited to 60 unauthenticated requests
+per hour. If a rate limit is hit, the API returns HTTP 429 with the reset time
+instead of hanging.

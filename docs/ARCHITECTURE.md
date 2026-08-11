@@ -78,8 +78,10 @@ Uses [Octokit](https://github.com/octokit/octokit.js).
   known source extensions) and picks the top N for context-heavy features.
 - `detectTechStack` / `detectPrimaryLanguage` — extension counts plus
   `package.json` dependency inspection.
-- `estimateLineCount` — samples up to 40 text files and scales the average to
-  the whole repository.
+- `estimateLineCount` — samples up to 10 text files (fetched 3-at-a-time) and
+  scales the average to the whole repository. GitHub calls go through
+  `withRetry`, which retries imminent rate-limit resets once and otherwise
+  throws a typed `GitHubRateLimitError` so routes can return HTTP 429.
 
 ## AI integration (`llmService.ts`)
 

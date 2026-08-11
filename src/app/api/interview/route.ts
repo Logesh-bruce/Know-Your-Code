@@ -6,6 +6,7 @@ import {
 } from "@/services/llmService";
 import {
   getRepoMetadata,
+  GitHubRateLimitError,
   listRepoFiles,
   parseRepoUrl,
 } from "@/services/githubService";
@@ -53,6 +54,9 @@ export async function POST(request: NextRequest) {
     const reply = await interviewReply(context, message, history);
     return NextResponse.json(reply);
   } catch (err) {
+    if (err instanceof GitHubRateLimitError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Something went wrong" },
       { status: 500 }
