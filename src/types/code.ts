@@ -11,6 +11,7 @@ export interface CodeExplanation {
   functions: CodeFunction[];
   relatedFiles: string[];
   deepDive?: string;
+  code?: string;
 }
 
 export interface ExplainRequest {

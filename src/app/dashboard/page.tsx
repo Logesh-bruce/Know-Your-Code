@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
+import ExplainView from "@/components/ExplainView";
 import FileTree from "@/components/FileTree";
 import RepoSummary from "@/components/RepoSummary";
 import Tabs from "@/components/Tabs";
@@ -94,6 +95,26 @@ export default function DashboardPage() {
     () => (repo ? buildFileTree(repo.files) : []),
     [repo]
   );
+
+  const orderedFiles = useMemo(
+    () =>
+      repo
+        ? repo.files
+            .filter((f) => f.type === "file")
+            .map((f) => f.path)
+        : [],
+    [repo]
+  );
+
+  const fileIndex = selectedFile ? orderedFiles.indexOf(selectedFile) : -1;
+
+  const selectFileAt = (index: number) => {
+    const next = orderedFiles[index];
+    if (next) {
+      setSelectedFile(next);
+      setActiveTab("Explain");
+    }
+  };
 
   const handleFileSelect = (path: string) => {
     setSelectedFile(path);
@@ -238,11 +259,20 @@ export default function DashboardPage() {
               <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
               <div className="pt-4">
                 {activeTab === "Explain" && (
-                  <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
-                    {selectedFile
-                      ? `Loading explanation for ${selectedFile}…`
-                      : "Select a file in the tree to generate an explanation."}
-                  </Card>
+                  selectedFile ? (
+                    <ExplainView
+                      repoId={repo.id}
+                      filePath={selectedFile}
+                      hasPrev={fileIndex > 0}
+                      hasNext={fileIndex !== -1 && fileIndex < orderedFiles.length - 1}
+                      onPrev={() => selectFileAt(fileIndex - 1)}
+                      onNext={() => selectFileAt(fileIndex + 1)}
+                    />
+                  ) : (
+                    <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
+                      Select a file in the tree to generate an explanation.
+                    </Card>
+                  )
                 )}
                 {activeTab === "Test" && (
                   <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
