@@ -13,6 +13,33 @@ interview practice.
 - **Knowledge Test** — an AI-generated multiple-choice quiz that checks whether you really understand the codebase.
 - **Interview Practice** — chat with an AI interviewer about your project, with confidence scoring and feedback.
 
+## How it works
+
+```
+Paste GitHub URL → Analyze → Dashboard
+                               ├── Explain  (split code + explanation view)
+                               ├── Test     (multiple-choice quiz + results)
+                               └── Interview(chat with confidence scoring)
+```
+
+The entrance page also plays a self-contained 6-scene product demo (in
+`src/components/ProductDemo.tsx`) so anyone can understand the product in
+~30 seconds without clicking anything.
+
+## Project structure
+
+```
+src/
+  app/                Next.js App Router pages + API routes (/api/*)
+  components/         Reusable UI components (incl. ProductDemo)
+  hooks/              Client-side data hooks
+  services/           githubService.ts (Octokit) + llmService.ts (Claude)
+  types/              Shared TypeScript contracts
+  utils/              Fetch helper, file-tree builder, URL validation
+  styles/             Design-system CSS variables + globals
+docs/                 API, setup, and architecture guides
+```
+
 ## Getting Started
 
 Prerequisites: Node.js 18+ and npm.
