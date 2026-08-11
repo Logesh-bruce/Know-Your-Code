@@ -9,6 +9,7 @@ import Card from "@/components/Card";
 import ExplainView from "@/components/ExplainView";
 import FileTree from "@/components/FileTree";
 import RepoSummary from "@/components/RepoSummary";
+import QuizView from "@/components/QuizView";
 import Tabs from "@/components/Tabs";
 import { useRepoAnalysis } from "@/hooks/useRepoAnalysis";
 import { buildFileTree } from "@/utils/formatting";
@@ -275,9 +276,10 @@ export default function DashboardPage() {
                   )
                 )}
                 {activeTab === "Test" && (
-                  <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
-                    Generate a knowledge test for this repository.
-                  </Card>
+                  <QuizView
+                    repoId={repo.id}
+                    onExit={() => setActiveTab("Explain")}
+                  />
                 )}
                 {activeTab === "Interview" && (
                   <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">

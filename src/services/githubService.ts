@@ -1,4 +1,5 @@
 import { Octokit } from "octokit";
+import type { RepoFile } from "@/types/repo";
 
 export interface GithubRepoRef {
   owner: string;
@@ -86,4 +87,72 @@ export async function fetchFileContent(
     mediaType: { format: "raw" },
   });
   return typeof response.data === "string" ? response.data : "";
+}
+
+export async function listRepoFiles(
+  ref: GithubRepoRef
+): Promise<RepoFile[]> {
+  const octokit = createOctokit();
+  const meta = await getRepoMetadata(ref);
+  const tree = await octokit.rest.git.getTree({
+    owner: ref.owner,
+    repo: ref.repo,
+    tree_sha: meta.defaultBranch,
+    recursive: "1",
+  });
+
+  return (tree.data.tree ?? [])
+    .filter((item) => item.path)
+    .map((item) => ({
+      path: item.path as string,
+      type: (item.type === "tree" ? "folder" : "file") as RepoFile["type"],
+    }))
+    .filter((item) => !item.path.includes("/.git/"));
+}
+
+const SOURCE_EXTENSIONS = new Set([
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".rs",
+  ".java", ".rb", ".php", ".cs", ".swift", ".kt", ".vue", ".svelte", ".html",
+]);
+
+function scoreFile(path: string): number {
+  if (
+    path.includes("node_modules") ||
+    path.includes(".github") ||
+    path.includes(".git") ||
+    path.endsWith("package-lock.json") ||
+    path.endsWith("yarn.lock") ||
+    path.endsWith("pnpm-lock.yaml")
+  ) {
+    return -1;
+  }
+  const lower = path.toLowerCase();
+  let score = 0;
+  if (
+    /(^|\/)(src|lib|app|pages|components|server|api|core|handlers?)\//.test(
+      lower
+    )
+  ) {
+    score += 2;
+  }
+  const base = path.split("/").pop()?.toLowerCase() ?? "";
+  if (["index", "main", "server", "app", "config", "routes"].includes(base)) {
+    score += 1;
+  }
+  const dot = base.lastIndexOf(".");
+  const ext = dot >= 0 ? base.slice(dot) : "";
+  if (SOURCE_EXTENSIONS.has(ext)) score += 1;
+  return score;
+}
+
+export function selectRepresentativeFiles(
+  files: RepoFile[],
+  limit = 8
+): string[] {
+  return files
+    .filter((f) => f.type === "file")
+    .filter((f) => scoreFile(f.path) >= 0)
+    .sort((a, b) => scoreFile(b.path) - scoreFile(a.path))
+    .slice(0, limit)
+    .map((f) => f.path);
 }

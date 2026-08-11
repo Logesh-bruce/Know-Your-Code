@@ -1,4 +1,5 @@
 import type { CodeExplanation, CodeFunction } from "@/types/code";
+import type { QuizQuestion } from "@/types/quiz";
 
 const DEFAULT_MODEL = "claude-3-5-haiku-latest";
 
@@ -266,4 +267,173 @@ function localExplainCode(
     relatedFiles,
     deepDive: undefined,
   };
+}
+
+/* ---------------------------------------------------------------------------
+ * Knowledge Test
+ * ------------------------------------------------------------------------- */
+
+export interface FileSnippet {
+  file: string;
+  code: string;
+}
+
+const QUIZ_SYSTEM = `You are KnowYourCode, a tool that helps developers prove they
+understand their own codebases. You generate multiple-choice knowledge tests
+based on real source files.
+
+The user gives you a set of files from one repository. Create 6-8 questions
+that test genuine understanding of the code — what functions do, how the code
+connects, data flow, error handling — not trivia.
+
+Respond with JSON only (no markdown) matching this exact shape:
+{
+  "questions": [
+    {
+      "question": "Question text",
+      "options": ["A) option", "B) option", "C) option", "D) option"],
+      "correctAnswer": "A",
+      "explanation": "1-2 sentences explaining why the answer is correct"
+    }
+  ]
+}
+
+Rules:
+- Exactly 4 options per question, lettered A-D inside the option strings.
+- Only one correct answer; distractors should be plausible but clearly wrong.
+- Base questions on the provided code. Vary topics across files.`;
+
+function buildQuizContext(snippets: FileSnippet[]): string {
+  return snippets
+    .map(
+      (s) =>
+        `### File: ${s.file}\n\`\`\`\n${s.code.slice(0, 8000)}\n\`\`\``
+    )
+    .join("\n\n");
+}
+
+function sanitizeQuestions(parsed: unknown): QuizQuestion[] {
+  if (!parsed || typeof parsed !== "object") return [];
+  const list = (parsed as { questions?: unknown }).questions;
+  if (!Array.isArray(list)) return [];
+
+  const questions: QuizQuestion[] = [];
+  for (const raw of list) {
+    const item = raw as Partial<QuizQuestion>;
+    if (
+      typeof item.question !== "string" ||
+      !Array.isArray(item.options) ||
+      item.options.length < 4
+    ) {
+      continue;
+    }
+    const options = item.options.filter(
+      (o): o is string => typeof o === "string"
+    );
+    const correctAnswer =
+      typeof item.correctAnswer === "string"
+        ? item.correctAnswer.charAt(0).toUpperCase()
+        : "A";
+    questions.push({
+      id: `q${questions.length + 1}`,
+      question: item.question,
+      options,
+      correctAnswer,
+      explanation:
+        typeof item.explanation === "string" ? item.explanation : "",
+    });
+  }
+  return questions.slice(0, 10);
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+const GENERIC_DISTRACTORS = [
+  "Stores data in a local database",
+  "Renders the user interface",
+  "Validates user input",
+  "Handles user authentication",
+  "Parses and transforms configuration",
+  "Sends automated notifications",
+  "Manages routing between pages",
+  "Handles background tasks",
+  "Makes HTTP requests to an external service",
+];
+
+function localGenerateQuiz(snippets: FileSnippet[]): QuizQuestion[] {
+  const topics: { label: string; detail: string }[] = [];
+
+  for (const snippet of snippets) {
+    const functions = extractFunctions(snippet.code);
+    if (functions.length > 0) {
+      for (const fn of functions.slice(0, 3)) {
+        if (fn.description.trim()) {
+          topics.push({
+            label: `${fn.name}() in ${snippet.file}`,
+            detail: fn.description,
+          });
+        }
+      }
+    } else {
+      const summary = extractLeadingComment(snippet.code);
+      if (summary) {
+        topics.push({ label: snippet.file, detail: summary });
+      }
+    }
+  }
+
+  if (topics.length === 0) return [];
+
+  const wrongPool = topics
+    .map((t) => t.detail)
+    .filter((d, i, arr) => arr.indexOf(d) === i);
+
+  const selected = topics.slice(0, 8);
+  return selected.map((topic, index) => {
+    const wrong = shuffle(wrongPool).filter((d) => d !== topic.detail);
+    for (const generic of shuffle(GENERIC_DISTRACTORS)) {
+      if (wrong.length >= 3) break;
+      if (!wrong.includes(generic) && generic !== topic.detail) {
+        wrong.push(generic);
+      }
+    }
+    const options = shuffle([topic.detail, ...wrong.slice(0, 3)]);
+    const letters = ["A", "B", "C", "D"];
+    return {
+      id: `q${index + 1}`,
+      question: `What is the purpose of ${topic.label}?`,
+      options: options.map(
+        (opt, i) => `${letters[i]}) ${opt}`
+      ),
+      correctAnswer: letters[options.indexOf(topic.detail)],
+      explanation: `${topic.detail} — ${topic.label}.`,
+    };
+  });
+}
+
+export async function generateQuiz(
+  snippets: FileSnippet[]
+): Promise<QuizQuestion[]> {
+  if (snippets.length === 0) return [];
+  if (!process.env.CLAUDE_API_KEY) return localGenerateQuiz(snippets);
+
+  try {
+    const text = await callClaude(
+      QUIZ_SYSTEM,
+      buildQuizContext(snippets),
+      3000
+    );
+    const parsed = extractJson(text);
+    const questions = sanitizeQuestions(parsed);
+    return questions.length > 0 ? questions : localGenerateQuiz(snippets);
+  } catch {
+    return localGenerateQuiz(snippets);
+  }
 }
