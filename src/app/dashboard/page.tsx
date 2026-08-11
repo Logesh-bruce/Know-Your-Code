@@ -8,6 +8,7 @@ import Button from "@/components/Button";
 import Card from "@/components/Card";
 import ExplainView from "@/components/ExplainView";
 import FileTree from "@/components/FileTree";
+import InterviewView from "@/components/InterviewView";
 import RepoSummary from "@/components/RepoSummary";
 import QuizView from "@/components/QuizView";
 import Tabs from "@/components/Tabs";
@@ -282,9 +283,11 @@ export default function DashboardPage() {
                   />
                 )}
                 {activeTab === "Interview" && (
-                  <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
-                    Practice explaining this repository in an interview.
-                  </Card>
+                  <InterviewView
+                    repoId={repo.id}
+                    repoName={repo.name}
+                    onExit={() => setActiveTab("Explain")}
+                  />
                 )}
               </div>
             </div>

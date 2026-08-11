@@ -1,5 +1,6 @@
 import type { CodeExplanation, CodeFunction } from "@/types/code";
 import type { QuizQuestion } from "@/types/quiz";
+import type { InterviewReply } from "@/types/interview";
 
 const DEFAULT_MODEL = "claude-3-5-haiku-latest";
 
@@ -435,5 +436,198 @@ export async function generateQuiz(
     return questions.length > 0 ? questions : localGenerateQuiz(snippets);
   } catch {
     return localGenerateQuiz(snippets);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Interview Practice
+ * ------------------------------------------------------------------------- */
+
+export interface InterviewContext {
+  name: string;
+  description: string;
+  files: string[];
+}
+
+export interface InterviewTurn {
+  role: "ai" | "user";
+  text: string;
+}
+
+const INTERVIEW_SYSTEM = `You are a senior engineering interviewer at a company that
+hired this candidate to own their own project. The candidate built the
+repository described below. Interview them conversationally so they can prove
+they actually understand their code.
+
+Context about the repository:
+- Name: __NAME__
+- Description: __DESCRIPTION__
+- File layout (sample):
+__FILES__
+
+Guidelines:
+- Ask one focused question at a time. Follow up on what they just said.
+- Mix technical questions (architecture, data flow, auth, error handling,
+  testing, deployment) with one behavioral question at the end.
+- Do not restate the candidate's answer; build on it.
+- Be warm but direct, like a real interviewer.
+
+Respond with JSON only (no markdown) matching this exact shape:
+{
+  "reply": "Your next question or follow-up",
+  "confidenceScore": 7,
+  "feedback": "Brief feedback on the candidate's last answer - what was clear and what to go deeper on."
+}
+
+Rules:
+- confidenceScore is 0-10. Start at 0 for the opening question (the candidate
+  has not answered yet).
+- For later turns, score the depth, specificity (names real files/functions),
+  and clarity of the candidate's answer.
+- feedback must be concrete and tied to their last message.`;
+
+function buildInterviewPrompt(
+  context: InterviewContext,
+  history: InterviewTurn[],
+  message: string
+): string {
+  const filesList =
+    context.files.slice(0, 30).map((f) => `  - ${f}`).join("\n") || "  (none)";
+
+  const transcript = history
+    .map((turn) => `${turn.role === "ai" ? "Interviewer" : "Candidate"}: ${turn.text}`)
+    .join("\n\n");
+
+  return `${transcript ? `\n\nConversation so far:\n${transcript}` : ""}
+\nCandidate's latest answer:\n${message || "(opening - no answer yet)"}`;
+}
+
+function sanitizeConfidence(value: unknown): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(num)) return 0;
+  return Math.min(10, Math.max(0, Math.round(num * 10) / 10));
+}
+
+function sanitizeReply(parsed: unknown): InterviewReply {
+  const obj =
+    parsed && typeof parsed === "object"
+      ? (parsed as Partial<InterviewReply>)
+      : {};
+  return {
+    reply:
+      typeof obj.reply === "string" && obj.reply.trim()
+        ? obj.reply.trim()
+        : "Let's keep going. Can you go into more detail on that?",
+    confidenceScore: sanitizeConfidence(obj.confidenceScore),
+    feedback: typeof obj.feedback === "string" ? obj.feedback : "",
+  };
+}
+
+const TECH_KEYWORDS = [
+  "react", "node", "express", "api", "database", "sql", "postgres",
+  "mongodb", "auth", "authentication", "docker", "typescript", "component",
+  "endpoint", "route", "model", "schema", "cache", "redis", "test", "jest",
+  "deploy", "vercel", "graphql", "rest", "state", "props", "middleware",
+];
+
+const FOLLOW_UP_QUESTIONS = [
+  "Can you walk me through the data flow between the frontend and the backend?",
+  "How does authentication work in this project?",
+  "What error-handling patterns do you use, and where could they be improved?",
+  "How would you test the most important part of this codebase?",
+  "Walk me through how you would deploy this project, and why you chose that approach.",
+  "If this project had to scale to 10x its current users, what would you change first?",
+  "Tell me about a difficult problem you solved while building this project.",
+];
+
+function scoreConfidence(text: string): number {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return 0;
+
+  let score = 4.5;
+  if (text.length > 120) score += 1;
+  if (text.length > 280) score += 0.5;
+
+  const mentions = TECH_KEYWORDS.filter((keyword) =>
+    new RegExp(`\\b${keyword}`, "i").test(normalized)
+  ).length;
+  score += Math.min(2, mentions * 0.4);
+
+  if (/\berror\b/.test(normalized)) score += 0.5;
+  if (/\b(testing|test|scale|scalab|deploy|performance)\b/.test(normalized)) {
+    score += 0.5;
+  }
+  if (/\b(index\.|\.tsx?|\.jsx?|\.py|components\/|src\/|routes)\b/.test(normalized)) {
+    score += 0.5;
+  }
+
+  return Math.min(9.5, Math.max(0, Math.round(score * 10) / 10));
+}
+
+function buildFeedback(message: string, confidence: number): string {
+  const mentionsFiles =
+    /\.(ts|tsx|js|jsx|py|go|rs)\b|components\/|src\/|routes\//i.test(message);
+  if (confidence >= 7) {
+    return "Clear and detailed. If you mention specific files and trade-offs by name, this will land even harder.";
+  }
+  if (confidence >= 5) {
+    return "Solid answer with good coverage. Naming the exact functions and files involved would add more depth.";
+  }
+  return "Good start, but the answer stayed general. Point to the actual components, functions, and files in this repo to show ownership.";
+}
+
+function localInterviewReply(
+  context: InterviewContext,
+  message: string,
+  history: InterviewTurn[]
+): InterviewReply {
+  if (!message.trim()) {
+    const description = context.description
+      ? `The project is described as: ${context.description}`
+      : "There is no description on this repository.";
+    return {
+      reply: `Great - let's get started. Walk me through the architecture of ${context.name}. How is the code organized, and how do the main pieces fit together? (${description})`,
+      confidenceScore: 0,
+      feedback: "",
+    };
+  }
+
+  const confidenceScore = scoreConfidence(message);
+  const answered = history.filter((turn) => turn.role === "user").length;
+  const question = FOLLOW_UP_QUESTIONS[answered % FOLLOW_UP_QUESTIONS.length];
+
+  return {
+    reply: `Good. ${question}`,
+    confidenceScore,
+    feedback: buildFeedback(message, confidenceScore),
+  };
+}
+
+export async function interviewReply(
+  context: InterviewContext,
+  message: string,
+  history: InterviewTurn[]
+): Promise<InterviewReply> {
+  if (!process.env.CLAUDE_API_KEY) {
+    return localInterviewReply(context, message, history);
+  }
+
+  try {
+    const system = INTERVIEW_SYSTEM.replace("__NAME__", context.name)
+      .replace("__DESCRIPTION__", context.description || "(no description)")
+      .replace(
+        "__FILES__",
+        context.files.slice(0, 30).map((f) => `  - ${f}`).join("\n") || "  (none)"
+      );
+    const prompt = buildInterviewPrompt(context, history, message);
+    const text = await callClaude(system, prompt, 1500);
+    const parsed = extractJson(text);
+    const reply = sanitizeReply(parsed);
+    if (reply.confidenceScore === 0 && message.trim() && reply.reply) {
+      reply.confidenceScore = scoreConfidence(message);
+    }
+    return reply;
+  } catch {
+    return localInterviewReply(context, message, history);
   }
 }
