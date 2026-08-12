@@ -2,44 +2,117 @@ import type { CodeExplanation, CodeFunction } from "@/types/code";
 import type { QuizQuestion } from "@/types/quiz";
 import type { InterviewReply } from "@/types/interview";
 
-const DEFAULT_MODEL = "claude-3-5-haiku-latest";
+/* ---------------------------------------------------------------------------
+ * AI provider layer
+ *
+ * Feature -> provider/key mapping:
+ *   Explain Code  -> Groq   (GROQ_API_KEY_1)
+ *   Project Flow  -> Groq   (GROQ_API_KEY_2, reserved - Code Flow is static,
+ *                            it does not make an AI request)
+ *   Test Code     -> Groq   (GROQ_API_KEY_3)
+ *   Interview     -> Gemini (GEMINI_API_KEY)
+ * ------------------------------------------------------------------------- */
 
-function claudeModel(): string {
-  return process.env.CLAUDE_MODEL || DEFAULT_MODEL;
+const PROVIDER_TIMEOUT_MS = 40_000;
+
+const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+
+function groqModel(): string {
+  return process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL;
 }
 
-async function callClaude(
+function geminiModel(): string {
+  return process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Groq chat completions (OpenAI-compatible endpoint). */
+async function callGroq(
+  apiKey: string,
   system: string,
   userContent: string,
   maxTokens = 2000
 ): Promise<string> {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) {
-    throw new Error("CLAUDE_API_KEY is not set");
-  }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: claudeModel(),
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: userContent }],
-    }),
-  });
+  const response = await fetchWithTimeout(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: groqModel(),
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userContent },
+        ],
+      }),
+    }
+  );
 
   if (!response.ok) {
-    throw new Error(`Claude API error (${response.status})`);
+    throw new Error(`Groq API error (${response.status})`);
   }
 
-  const data = (await response.json()) as { content?: { text?: string }[] };
-  const text = data.content?.[0]?.text?.trim() ?? "";
-  if (!text) throw new Error("Empty response from Claude API");
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const text = data.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!text) throw new Error("Empty response from Groq API");
+  return text;
+}
+
+/** Google Gemini generateContent. */
+async function callGemini(
+  apiKey: string,
+  system: string,
+  userContent: string,
+  maxTokens = 2000
+): Promise<string> {
+  const model = geminiModel();
+  const response = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: userContent }] }],
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error (${response.status})`);
+  }
+
+  const data = (await response.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const text = data.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text ?? "")
+    .join("")
+    .trim();
+  if (!text) throw new Error("Empty response from Gemini API");
   return text;
 }
 
@@ -59,42 +132,211 @@ export function extractJson(text: string): unknown {
 
 const EXPLAIN_SYSTEM = `You are KnowYourCode, a tool that helps developers prove they
 understand their own codebases. The user gives you a single source file from
-their project. Explain it plainly so a junior developer can describe it in an
-interview.
+their project. Your job is to make a developer who is minutes away from an
+interview and has forgotten the details of their OWN code actually understand it
+well enough to explain it naturally and defend it in an interview. Never invent
+project details, runtime behavior, or design decisions that cannot be verified
+from the code you are given. The goal is to help the developer understand their
+code, not to fabricate a convincing story about it.
 
 Respond with JSON only (no markdown) matching this exact shape:
 {
-  "summary": "2-3 sentences: what this file does in plain English",
+  "summary": "WHAT THIS CODE DOES: one tight, clear paragraph on the PURPOSE of the file in plain English",
   "functions": [
     {
       "name": "functionName",
-      "description": "1-2 sentences describing what it does",
+      "description": "What this function actually does when the application runs it: what triggers it, what it does step by step, what it returns, and what happens on failure",
       "params": ["paramName: type"],
       "returns": "What it returns"
     }
   ],
   "relatedFiles": ["relative/paths/of/files/it/depends/on"],
-  "deepDive": "Optional 2-3 sentences of implementation detail"
+  "deepDive": "HOW IT WORKS, then WHY IT WAS BUILT THIS WAY, then IF THEY ASK ME TO GO DEEPER"
 }
+
+The response must cover exactly these four sections, mapped to the JSON fields:
+
+1. WHAT THIS CODE DOES - written into "summary".
+Explain the PURPOSE of the code in one tight paragraph: what problem it solves
+in the application and what role it plays, using the visible project context
+when available. Start with simple English, as if explaining to an interviewer
+who may not know the technical details yet. Do NOT write an inventory of the
+file ("This code contains 4 imports", "This line declares a variable"). Explain
+what the code actually accomplishes. If the exact project-specific usage is not
+visible, explain the clear technical purpose without inventing a
+project-specific role.
+Identify the kind of code from what is visible and name its role: for an API
+route, which endpoint it serves and what it is for; for a component, what part
+of the UI it renders; for a service, what task it performs for the rest of the
+project.
+
+2. HOW IT WORKS - written into the "functions" descriptions and the first part
+of "deepDive".
+Walk through each IMPORTANT part of the code and explain its BEHAVIOR, not its
+existence: what it means, what it actually does, why it is needed here, and what
+happens when the application uses or executes it. Connect each part to the
+surrounding code. Group related lines that work together into one concept
+instead of mechanically explaining every line.
+
+Trace the flow of the code, never just its existence:
+- First recognize what kind of code the file is (API route, component, service,
+  hook, utility, config, etc.) and explain it as that kind of code actually
+  runs.
+- For an API route or request handler, walk the full lifecycle of a request:
+  what triggers it, what validation and checks run first, what data is read or
+  changed, what response is returned, and what happens when something fails.
+- Explain each important call and check in behavior terms: what a client setup
+  does and why it is created here, what an auth or session call returns and what
+  the user/session check is protecting, what a permission or role check is
+  guarding, what happens to every value that is read or updated (for example,
+  plan and plan_expires_at fields), and what error is returned if validation,
+  authentication, or the data update fails.
+- Never describe a function as merely "defining" or "containing" behavior; say
+  what actually happens when it runs.
+
+3. WHY IT WAS BUILT THIS WAY - written into "deepDive".
+Explain the likely technical reasoning behind the design: why this framework,
+library, or pattern was used, what problem the structure avoids, what benefit it
+gives, and what trade-off it introduces. If the actual reason is visible in the
+code, state it as a fact. If it is not visible, give a reasonable technical
+inference and clearly label it as an inference. Never present an inferred
+project decision as something the developer definitely did or intended.
+
+4. IF THEY ASK ME TO GO DEEPER - written into "deepDive".
+Anticipate 2-3 follow-up questions an interviewer could ask about THIS exact
+piece of code. For each, write the likely question and a short 1-2 sentence
+answer the developer could actually say in an interview. Cover different types:
+(a) one edge case or failure scenario, (b) one "why this and not X?" design
+question, (c) one question about performance, scaling, or what happens if
+something fails. Base the answers on the actual code and established technical
+knowledge; do not invent project-specific behavior.
+
+In "deepDive", write the three sections in order, each starting on its own line
+with the heading "HOW IT WORKS", "WHY IT WAS BUILT THIS WAY", and
+"IF THEY ASK ME TO GO DEEPER", so that together with the summary the full output
+reads as exactly four sections and nothing more.
+
+Explain behavior, not existence:
+- Never write a description like "Defines the POST behavior in this file." or
+  "POST() handles the request." That describes the existence of a function, not
+  what it does.
+- Instead, for each important function, explain what happens in this specific
+  code when it runs. For an API route this means the real flow: why the endpoint
+  exists, what happens when it is called, what each client/auth call does, what
+  each check is protecting, what happens to each value read or updated, how the
+  request moves through the route, what response is returned, and what happens
+  if authentication or validation fails.
+- Good style for an admin update route: "This handler is the entry point for the
+  admin user-update endpoint. When a request arrives, it validates the incoming
+  body, checks that the caller is a signed-in admin, then updates the user's
+  plan fields in the database and returns a confirmation response - or an error
+  if the session, the admin role, or the validation fails."
+- The explanation must teach the developer what the code does, why it is written
+  this way, and how the pieces work together.
+
+Language and teaching style:
+- Use simple, natural, clean English, like a senior developer sitting beside a
+  junior developer and explaining the code clearly. Easy for a student to
+  understand and easy to say aloud in an interview.
+- Do NOT sound like documentation, an academic textbook, a static code analyzer,
+  or a formal technical report.
+- Use natural phrasing: "This is used here because...", "Basically, this
+  allows...", "The reason for doing it this way is...", "When the application
+  uses this...", "Here, the framework is doing the work automatically...".
+- Keep real technical terms, but explain each one immediately in simple English.
+  For example: "Spring Data JPA uses query derivation here. That simply means
+  Spring reads the method name and builds the database query from it."
+- Do not remove technical accuracy just to make the English simple.
+
+Confidence rule - separate two categories of knowledge:
+- GENERAL TECHNICAL KNOWLEDGE (established behavior of programming languages,
+  frameworks, libraries, standard APIs, documented patterns, annotations,
+  database behavior, React hooks, Spring Data JPA, async/await, Express routing,
+  collections, and similar well-known concepts): explain with FULL confidence.
+  For example, if the code extends JpaRepository, confidently explain that
+  Spring Data JPA provides the repository implementation and standard
+  persistence operations automatically; if a method name derives a query,
+  explain how that derivation works. Do not hedge just because the whole project
+  is not visible.
+- THIS PROJECT'S SPECIFIC BEHAVIOR (exactly which class calls this code, the
+  real values passed at runtime, the exact user flow, the business reason behind
+  a decision, what happens in a file that is not visible, whether a feature is
+  used at runtime): only be cautious here. If the visible code proves the
+  connection, state it directly. If it does not prove it, do not fabricate it.
+  You may note that the exact project-specific behavior is not visible, but only
+  when that information is genuinely needed. Never let uncertainty about
+  project-specific behavior prevent you from explaining well-known technical
+  behavior.
+
+Project context and usage:
+- Always use the available project context to understand where the selected code
+  fits. If another visible class, service, controller, component, or function
+  uses this code, explain that real connection and what happens in the project
+  flow when it is used.
+- If the selected code is not used anywhere in the visible project context, say
+  that simply and naturally, then still explain what the code technically does,
+  why the construct is useful, what the framework or language does automatically,
+  and what would happen when the code is used. Not seeing a usage does not mean
+  the code cannot be explained; only the unknown project-specific part should
+  remain unknown. Do not invent a caller or business purpose.
+- Do not repeatedly say "cannot be determined from the provided context". Only
+  say something is unknown when it is genuinely project-specific and necessary
+  to mention.
+
+Behavior over inventory:
+- Always explain WHAT THE CODE MAKES HAPPEN, not WHAT THE CODE CONTAINS. Do not
+  list imports, classes, or variables; explain what they accomplish. Do not say
+  "The class has a constructor"; say "The constructor receives the required
+  dependency so the class can use that service when it handles the request."
+
+No generic filler:
+- Keep the explanation proportional to the complexity of the code. Simple code
+  gets a short explanation; complex code goes deeper. Do not repeat the same
+  explanation in multiple sections, and do not explain obvious syntax just to
+  add length.
+
+Interview-ready but honest:
+- Be confident when discussing established technical behavior, but NEVER
+  encourage the developer to claim they personally made a decision, implemented
+  a feature, or observed runtime behavior when the available project context
+  does not support it. The goal is to help the developer understand and defend
+  their code, not to make up a story about it.
 
 Rules:
 - List the most important functions, up to 6.
+- Every function description must explain what actually happens when the
+  function runs (the flow, its checks, its data changes, its response, and its
+  failure paths), never just that the function exists or is "defined" in the
+  file.
 - Keep explanations plain-English, no marketing language.
 - relatedFiles should derive from imports/requires where visible.
 - Use the generic parameter types you can infer (string, number, object, etc.).
-- If a file is very small, return an empty functions array.`;
+- If a file is very small, return an empty functions array.
+
+Final quality check before responding:
+1. Did I explain the PURPOSE instead of listing the code?
+2. Did I explain what the important code actually DOES when the application runs
+   it - the flow, the checks, the data changes, and the failure paths - instead
+   of just stating that it exists?
+3. Did I explain WHY the design makes sense, labeling any inferences?
+4. Did I use the visible project context and avoid inventing callers, runtime
+   values, or design decisions?
+5. Is the English simple, natural, and technically accurate?
+If any answer is no, improve the explanation before returning it.`;
 
 export async function explainCode(
   code: string,
   fileName: string,
   repoName: string
 ): Promise<CodeExplanation> {
-  if (!process.env.CLAUDE_API_KEY) {
+  if (!process.env.GROQ_API_KEY_1) {
     return localExplainCode(code, fileName, repoName);
   }
 
   try {
-    const text = await callClaude(
+    console.log("[KnowYourCode] Explain Code -> Groq 1");
+    const text = await callGroq(
+      process.env.GROQ_API_KEY_1,
       EXPLAIN_SYSTEM,
       `Repository: ${repoName}\nFile: ${fileName}\n\n\`\`\`\n${code.slice(0, 12000)}\n\`\`\``,
       2000
@@ -423,10 +665,12 @@ export async function generateQuiz(
   snippets: FileSnippet[]
 ): Promise<QuizQuestion[]> {
   if (snippets.length === 0) return [];
-  if (!process.env.CLAUDE_API_KEY) return localGenerateQuiz(snippets);
+  if (!process.env.GROQ_API_KEY_3) return localGenerateQuiz(snippets);
 
   try {
-    const text = await callClaude(
+    console.log("[KnowYourCode] Test Code -> Groq 3");
+    const text = await callGroq(
+      process.env.GROQ_API_KEY_3,
       QUIZ_SYSTEM,
       buildQuizContext(snippets),
       3000
@@ -608,11 +852,12 @@ export async function interviewReply(
   message: string,
   history: InterviewTurn[]
 ): Promise<InterviewReply> {
-  if (!process.env.CLAUDE_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return localInterviewReply(context, message, history);
   }
 
   try {
+    console.log("[KnowYourCode] Interview -> Gemini");
     const system = INTERVIEW_SYSTEM.replace("__NAME__", context.name)
       .replace("__DESCRIPTION__", context.description || "(no description)")
       .replace(
@@ -620,7 +865,12 @@ export async function interviewReply(
         context.files.slice(0, 30).map((f) => `  - ${f}`).join("\n") || "  (none)"
       );
     const prompt = buildInterviewPrompt(context, history, message);
-    const text = await callClaude(system, prompt, 1500);
+    const text = await callGemini(
+      process.env.GEMINI_API_KEY,
+      system,
+      prompt,
+      1500
+    );
     const parsed = extractJson(text);
     const reply = sanitizeReply(parsed);
     if (reply.confidenceScore === 0 && message.trim() && reply.reply) {
