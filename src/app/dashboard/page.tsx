@@ -11,13 +11,14 @@ import FileTree from "@/components/FileTree";
 import InterviewView from "@/components/InterviewView";
 import RepoSummary from "@/components/RepoSummary";
 import QuizView from "@/components/QuizView";
+import CodeFlowExplorer from "@/components/flow-explorer/CodeFlowExplorer";
 import Tabs from "@/components/Tabs";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useRepoAnalysis, ANALYSIS_STEPS } from "@/hooks/useRepoAnalysis";
 import { buildFileTree } from "@/utils/formatting";
 import type { FileTreeNode } from "@/types/repo";
 
-const TABS = ["Explain", "Test", "Interview"];
+const TABS = ["Explain", "Test", "Interview", "Flow"];
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -332,7 +333,9 @@ export default function DashboardPage() {
                       ? "Explain Code"
                       : tab === "Test"
                         ? "Test"
-                        : "Interview"}
+                        : tab === "Flow"
+                          ? "Code Flow"
+                          : "Interview"}
                   </Button>
                 ))}
               </div>
@@ -371,6 +374,12 @@ export default function DashboardPage() {
                   repoId={repo.id}
                   repoName={repo.name}
                   onExit={() => setActiveTab("Explain")}
+                />
+              </div>
+              <div className={activeTab === "Flow" ? "" : "hidden"}>
+                <CodeFlowExplorer
+                  repoId={repo.id}
+                  active={activeTab === "Flow"}
                 />
               </div>
             </div>
