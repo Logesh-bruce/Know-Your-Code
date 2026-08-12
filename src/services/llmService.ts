@@ -396,7 +396,7 @@ function localGenerateQuiz(snippets: FileSnippet[]): QuizQuestion[] {
     .map((t) => t.detail)
     .filter((d, i, arr) => arr.indexOf(d) === i);
 
-  const selected = topics.slice(0, 8);
+  const selected = shuffle(topics).slice(0, 8);
   return selected.map((topic, index) => {
     const wrong = shuffle(wrongPool).filter((d) => d !== topic.detail);
     for (const generic of shuffle(GENERIC_DISTRACTORS)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import ProgressBar from "@/components/ProgressBar";
@@ -34,8 +34,10 @@ export default function QuizView({ repoId, onExit }: QuizViewProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attemptRef = useRef(0);
 
   const load = useCallback(async () => {
+    attemptRef.current += 1;
     setPhase("loading");
     setError(null);
     setIndex(0);
@@ -44,7 +46,7 @@ export default function QuizView({ repoId, onExit }: QuizViewProps) {
     try {
       const result = await postJson<{ questions: QuizQuestion[] }>(
         "/api/quiz",
-        { repoId }
+        { repoId, attempt: attemptRef.current }
       );
       if (!result.questions || result.questions.length === 0) {
         throw new Error("No questions returned");
