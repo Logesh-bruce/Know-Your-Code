@@ -25,41 +25,61 @@ export function extractImportSpecifiers(code: string): string[] {
   return [...new Set(specs)];
 }
 
-/** Resolves a relative module specifier against the importing file's path to
- *  a path that exists in the repo's known file set. Returns null for package
- *  imports and for anything that cannot be resolved to a known file. */
+/** Candidate base paths for a specifier. Handles:
+ *  - relative specifiers ("./x", "../x") resolved against the importer
+ *  - the common "@/" path alias, resolved against the repo root and against
+ *    "src/" (the conventional mapping used by most Next.js/tsconfig setups)
+ *  Package specifiers and anything unresolvable return no bases. */
+function specifierBases(
+  importerPath: string,
+  specifier: string
+): string[] {
+  if (specifier.startsWith(".")) {
+    const importerSegments = importerPath.split("/");
+    importerSegments.pop();
+    const segments = importerSegments.filter(Boolean);
+    for (const part of specifier.split("/")) {
+      if (part === "." || part === "") continue;
+      if (part === "..") segments.pop();
+      else segments.push(part);
+    }
+    return [segments.join("/")];
+  }
+
+  if (specifier.startsWith("@/")) {
+    const rest = specifier.slice(2);
+    return [`${rest}`, `src/${rest}`];
+  }
+
+  return [];
+}
+
+/** Resolves a module specifier to a path that exists in the repo's known file
+ *  set. Returns null for package imports and anything that cannot be resolved
+ *  to a known file, so only real in-repo relationships become edges. */
 export function resolveRelativeImport(
   importerPath: string,
   specifier: string,
   knownFiles: Set<string>
 ): string | null {
-  if (!specifier.startsWith(".")) return null;
-
-  const importerSegments = importerPath.split("/");
-  importerSegments.pop();
-  const segments = importerSegments.filter(Boolean);
-  for (const part of specifier.split("/")) {
-    if (part === "." || part === "") continue;
-    if (part === "..") segments.pop();
-    else segments.push(part);
-  }
-
-  const base = segments.join("/");
-  const candidates = [
-    base,
-    `${base}.ts`,
-    `${base}.tsx`,
-    `${base}.js`,
-    `${base}.jsx`,
-    `${base}.mjs`,
-    `${base}.cjs`,
-    `${base}/index.ts`,
-    `${base}/index.tsx`,
-    `${base}/index.js`,
-    `${base}/index.jsx`,
-  ];
-  for (const candidate of candidates) {
-    if (knownFiles.has(candidate)) return candidate;
+  const bases = specifierBases(importerPath, specifier);
+  for (const base of bases) {
+    const candidates = [
+      base,
+      `${base}.ts`,
+      `${base}.tsx`,
+      `${base}.js`,
+      `${base}.jsx`,
+      `${base}.mjs`,
+      `${base}.cjs`,
+      `${base}/index.ts`,
+      `${base}/index.tsx`,
+      `${base}/index.js`,
+      `${base}/index.jsx`,
+    ];
+    for (const candidate of candidates) {
+      if (knownFiles.has(candidate)) return candidate;
+    }
   }
   return null;
 }
