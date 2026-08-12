@@ -339,38 +339,41 @@ export default function DashboardPage() {
             </Card>
 
             <div className="mt-6">
-              <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
-              <div className="pt-4">
-                {activeTab === "Explain" && (
-                  selectedFile ? (
-                    <ExplainView
-                      repoId={repo.id}
-                      filePath={selectedFile}
-                      hasPrev={fileIndex > 0}
-                      hasNext={fileIndex !== -1 && fileIndex < orderedFiles.length - 1}
-                      onPrev={() => selectFileAt(fileIndex - 1)}
-                      onNext={() => selectFileAt(fileIndex + 1)}
-                    />
-                  ) : (
-                    <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
-                      Select a file in the tree to generate an explanation.
-                    </Card>
-                  )
-                )}
-                {activeTab === "Test" && (
-                  <QuizView
+            <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
+            <div className="pt-4">
+              <div className={activeTab === "Explain" ? "" : "hidden"}>
+                {selectedFile ? (
+                  <ExplainView
                     repoId={repo.id}
-                    onExit={() => setActiveTab("Explain")}
+                    filePath={selectedFile}
+                    hasPrev={fileIndex > 0}
+                    hasNext={
+                      fileIndex !== -1 &&
+                      fileIndex < orderedFiles.length - 1
+                    }
+                    onPrev={() => selectFileAt(fileIndex - 1)}
+                    onNext={() => selectFileAt(fileIndex + 1)}
                   />
-                )}
-                {activeTab === "Interview" && (
-                  <InterviewView
-                    repoId={repo.id}
-                    repoName={repo.name}
-                    onExit={() => setActiveTab("Explain")}
-                  />
+                ) : (
+                  <Card className="flex h-64 items-center justify-center text-sm text-text-secondary">
+                    Select a file in the tree to generate an explanation.
+                  </Card>
                 )}
               </div>
+              <div className={activeTab === "Test" ? "" : "hidden"}>
+                <QuizView
+                  repoId={repo.id}
+                  onExit={() => setActiveTab("Explain")}
+                />
+              </div>
+              <div className={activeTab === "Interview" ? "" : "hidden"}>
+                <InterviewView
+                  repoId={repo.id}
+                  repoName={repo.name}
+                  onExit={() => setActiveTab("Explain")}
+                />
+              </div>
+            </div>
             </div>
           </main>
         </div>
