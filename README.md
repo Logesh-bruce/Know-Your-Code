@@ -11,10 +11,9 @@ KnowYourCode is an AI-powered developer tool that analyzes GitHub repositories a
 ## 📸 Product Preview
 
 <p align="center">
-  <img src=""C:\Users\M.G.Logesh\Downloads\ChatGPT Image Aug 12, 2026, 09_28_57 PM.png"g" alt="KnowYourCode Product Preview" width="900"/>
+  <img src="C:\Users\M.G.Logesh\Downloads\ChatGPT Image Aug 12, 2026, 09_28_57 PM.png"alt="KnowYourCode Product Preview" width="900"/>
 </p>
 
-> Add your project screenshot as `public/know-your-code-preview.png`.
 
 ---
 
