@@ -12,9 +12,10 @@ import {
   logGithubRateLimitOnce,
   parseRepoUrl,
 } from "@/services/githubService";
-
-const CACHE_SIZE_LIMIT = 50;
-const analysisCache = new Map<string, { sha: string; result: RepoAnalysis }>();
+import {
+  getCachedAnalysis,
+  setCachedAnalysis,
+} from "@/services/analysisCache";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,9 +38,9 @@ export async function POST(request: NextRequest) {
     const headSha = await getRepoHeadSha(ref, metadata.defaultBranch);
 
     const cacheKey = `${ref.owner}/${ref.repo}#${headSha}`;
-    const cached = analysisCache.get(cacheKey);
+    const cached = getCachedAnalysis(cacheKey);
     if (cached) {
-      return NextResponse.json(cached.result);
+      return NextResponse.json(cached);
     }
 
     const files = await listRepoFiles(ref, metadata.defaultBranch);
@@ -64,11 +65,7 @@ export async function POST(request: NextRequest) {
       files,
     };
 
-    if (analysisCache.size >= CACHE_SIZE_LIMIT) {
-      const oldestKey = analysisCache.keys().next().value;
-      if (oldestKey !== undefined) analysisCache.delete(oldestKey);
-    }
-    analysisCache.set(cacheKey, { sha: headSha, result: analysis });
+    setCachedAnalysis(cacheKey, analysis.id, analysis);
 
     return NextResponse.json(analysis);
   } catch (err) {
