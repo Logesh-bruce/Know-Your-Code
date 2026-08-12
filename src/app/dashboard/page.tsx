@@ -12,7 +12,7 @@ import InterviewView from "@/components/InterviewView";
 import RepoSummary from "@/components/RepoSummary";
 import QuizView from "@/components/QuizView";
 import Tabs from "@/components/Tabs";
-import { useRepoAnalysis } from "@/hooks/useRepoAnalysis";
+import { useRepoAnalysis, ANALYSIS_STEPS } from "@/hooks/useRepoAnalysis";
 import { buildFileTree } from "@/utils/formatting";
 import type { FileTreeNode } from "@/types/repo";
 
@@ -68,7 +68,7 @@ function Sidebar({
   );
 }
 
-function LoadingState() {
+function LoadingState({ activeStep }: { activeStep: number | null }) {
   return (
     <div className="flex h-full min-h-[320px] items-center justify-center p-6">
       <Card className="w-full max-w-md">
@@ -78,6 +78,44 @@ function LoadingState() {
         <p className="mt-1 text-xs text-text-secondary">
           Fetching structure and tech stack from GitHub.
         </p>
+        <ul className="mt-4 space-y-2">
+          {ANALYSIS_STEPS.map((step, i) => {
+            const done = activeStep !== null && i < activeStep;
+            const active = activeStep === i;
+            return (
+              <li
+                key={step.id}
+                className={`flex items-center gap-2 text-xs ${
+                  done || active ? "text-text-primary" : "text-text-secondary"
+                }`}
+              >
+                {done ? (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden="true"
+                    className="text-success"
+                  >
+                    <path
+                      d="M3 8.5l3.5 3.5L13 5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : active ? (
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                ) : (
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-bg-tertiary" />
+                )}
+                {step.label}…
+              </li>
+            );
+          })}
+        </ul>
         <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-bg-tertiary">
           <div className="h-full w-1/3 rounded-full bg-accent animate-[indeterminate_1.4s_ease-in-out_infinite]" />
         </div>
@@ -88,7 +126,7 @@ function LoadingState() {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { status, repo, error, retry } = useRepoAnalysis();
+  const { status, repo, error, retry, activeStep } = useRepoAnalysis();
   const [activeTab, setActiveTab] = useState<string>(TABS[0]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -166,7 +204,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Body */}
-      {status === "loading" && <LoadingState />}
+      {status === "loading" && <LoadingState activeStep={activeStep} />}
 
       {status === "error" && (
         <div className="flex flex-1 items-center justify-center p-6">
