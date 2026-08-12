@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { explainCode } from "@/services/llmService";
 import {
+  classifyGithubError,
   fetchFileContent,
-  GitHubRateLimitError,
   parseRepoUrl,
 } from "@/services/githubService";
 
@@ -38,15 +38,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ...explanation, code });
   } catch (err) {
-    if (err instanceof GitHubRateLimitError) {
-      return NextResponse.json({ error: err.message }, { status: 429 });
-    }
-    return NextResponse.json(
-      {
-        error:
-          err instanceof Error ? err.message : "Something went wrong",
-      },
-      { status: 500 }
-    );
+    const { message, status } = classifyGithubError(err);
+    return NextResponse.json({ error: message }, { status });
   }
 }

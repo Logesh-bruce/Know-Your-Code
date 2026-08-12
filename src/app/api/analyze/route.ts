@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RepoAnalysis } from "@/types/repo";
 import {
+  classifyGithubError,
   detectPrimaryLanguage,
   detectTechStack,
   estimateLineCount,
   fetchFileContent,
   getRepoHeadSha,
   getRepoMetadata,
-  GitHubRateLimitError,
   listRepoFiles,
   logGithubRateLimitOnce,
   parseRepoUrl,
@@ -72,12 +72,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(analysis);
   } catch (err) {
-    if (err instanceof GitHubRateLimitError) {
-      return NextResponse.json({ error: err.message }, { status: 429 });
-    }
-    const message =
-      err instanceof Error ? err.message : "Something went wrong";
-    const status = message.includes("Not Found") ? 404 : 500;
+    const { message, status } = classifyGithubError(err);
     return NextResponse.json({ error: message }, { status });
   }
 }

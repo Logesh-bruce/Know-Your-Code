@@ -1,5 +1,15 @@
 export const REQUEST_TIMEOUT_MS = 45_000;
 
+export class ApiError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function postJson<T>(
   url: string,
   body: unknown,
@@ -19,15 +29,27 @@ export async function postJson<T>(
       const payload = (await response.json().catch(() => null)) as
         | { error?: string }
         | null;
-      throw new Error(payload?.error ?? `Request failed (${response.status})`);
+      throw new ApiError(
+        payload?.error ?? `Request failed (${response.status})`,
+        response.status
+      );
     }
 
     return (await response.json()) as T;
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
+      throw new ApiError(
+        `Request timed out after ${timeoutMs / 1000}s — the server may be slow. Try again, or check your network connection.`,
+        408
+      );
     }
-    throw err;
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      err instanceof Error
+        ? err.message
+        : "Network error — could not reach the server",
+      0
+    );
   } finally {
     clearTimeout(timer);
   }

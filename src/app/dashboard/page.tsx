@@ -124,9 +124,36 @@ function LoadingState({ activeStep }: { activeStep: number | null }) {
   );
 }
 
+const ERROR_COPY: Record<
+  number,
+  { title: string; hint: string; homeLabel?: string }
+> = {
+  400: {
+    title: "That doesn't look like a GitHub repository",
+    hint: "Paste a full URL like https://github.com/owner/repo, or an owner/repo name.",
+  },
+  404: {
+    title: "Repository not found",
+    hint: "Double-check the owner and repository name, and make sure the repository is public.",
+  },
+  403: {
+    title: "Can't access this repository",
+    hint: "It may be private. Make sure GITHUB_TOKEN has read access to this repo, then try again.",
+  },
+  429: {
+    title: "GitHub rate limit reached",
+    hint: "Wait for the rate limit to reset, then try again. A GITHUB_TOKEN raises the limit.",
+  },
+  408: {
+    title: "The request took too long",
+    hint: "The server was slow to respond. Try again, or check your network connection.",
+  },
+};
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { status, repo, error, retry, activeStep } = useRepoAnalysis();
+  const { status, repo, error, errorStatus, retry, activeStep } =
+    useRepoAnalysis();
   const [activeTab, setActiveTab] = useState<string>(TABS[0]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -210,15 +237,29 @@ export default function DashboardPage() {
         <div className="flex flex-1 items-center justify-center p-6">
           <Card className="w-full max-w-md">
             <div className="text-sm font-medium text-error">
-              Could not analyze repository
+              {errorStatus !== null && ERROR_COPY[errorStatus]
+                ? ERROR_COPY[errorStatus].title
+                : "Could not analyze repository"}
             </div>
-            <p className="mt-1 text-sm text-text-secondary">{error}</p>
-            <div className="mt-4 flex gap-2">
-              <Button onClick={() => retry()}>Try again</Button>
-              <Button variant="secondary" onClick={() => router.push("/")}>
-                Go home
-              </Button>
-            </div>
+            <p className="mt-1 text-sm text-text-secondary">
+              {errorStatus !== null && ERROR_COPY[errorStatus]
+                ? ERROR_COPY[errorStatus].hint
+                : error}
+            </p>
+            {errorStatus === 400 ? (
+              <div className="mt-4 flex gap-2">
+                <Button variant="secondary" onClick={() => router.push("/")}>
+                  Fix the URL
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-4 flex gap-2">
+                <Button onClick={() => retry()}>Try again</Button>
+                <Button variant="secondary" onClick={() => router.push("/")}>
+                  Go home
+                </Button>
+              </div>
+            )}
           </Card>
         </div>
       )}

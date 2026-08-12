@@ -23,6 +23,54 @@ export class GitHubRateLimitError extends Error {
   }
 }
 
+export class GitHubHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "GitHubHttpError";
+    this.status = status;
+  }
+}
+
+/**
+ * Maps an unknown error from a GitHub API call into a stable message + HTTP
+ * status so callers can surface distinct, actionable errors.
+ */
+export function classifyGithubError(
+  err: unknown
+): { message: string; status: number } {
+  if (err instanceof GitHubRateLimitError) {
+    return { message: err.message, status: 429 };
+  }
+  if (err instanceof GitHubHttpError) {
+    return { message: err.message, status: err.status };
+  }
+  const e = toErrorLike(err);
+  if (isRateLimitError(err) || e.status === 429) {
+    const resetAt = parseResetHeader(e.response?.headers);
+    return { message: buildRateLimitMessage(resetAt), status: 429 };
+  }
+  if (e.status === 404) {
+    return {
+      message:
+        "Repository not found. Double-check the owner and repo name, and confirm the repository is public.",
+      status: 404,
+    };
+  }
+  if (e.status === 403) {
+    return {
+      message:
+        "Access to this repository is denied. It may be private — make sure GITHUB_TOKEN has read access to it.",
+      status: 403,
+    };
+  }
+  return {
+    message: err instanceof Error ? err.message : "Something went wrong",
+    status: 500,
+  };
+}
+
 /**
  * Accepts either a full GitHub URL or an "owner/repo" shorthand.
  */
@@ -42,20 +90,29 @@ export function parseRepoUrl(input: string): GithubRepoRef {
       }
       const segments = url.pathname.split("/").filter(Boolean);
       if (segments.length < 2) {
-        throw new Error("GitHub URL must point to a repository");
+        throw new GitHubHttpError(
+          "GitHub URL must point to a repository, like https://github.com/owner/repo",
+          400
+        );
       }
       return {
         owner: segments[0],
         repo: segments[1].replace(/\.git$/, ""),
       };
     } catch {
-      throw new Error("Invalid GitHub repository URL");
+      throw new GitHubHttpError(
+        "Invalid GitHub repository URL. Use a full URL like https://github.com/owner/repo, or an owner/repo name.",
+        400
+      );
     }
   }
 
   const parts = candidate.replace(/\.git$/, "").split("/").filter(Boolean);
   if (parts.length < 2) {
-    throw new Error("Expected an \"owner/repo\" or a GitHub URL");
+    throw new GitHubHttpError(
+      "Expected an \"owner/repo\" name or a GitHub URL, like https://github.com/owner/repo",
+      400
+    );
   }
   return { owner: parts[0], repo: parts[parts.length - 1] };
 }
