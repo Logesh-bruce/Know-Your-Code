@@ -2,18 +2,33 @@ import type { RepoAnalysis, RepoFile } from "@/types/repo";
 
 const CACHE_SIZE_LIMIT = 50;
 
-const cache = new Map<string, RepoAnalysis>();
-const keyRepo = new Map<string, string>();
-const fileIndex = new Map<string, RepoFile[]>();
+interface CacheStore {
+  analysis: Map<string, RepoAnalysis>;
+  keyRepo: Map<string, string>;
+  fileIndex: Map<string, RepoFile[]>;
+}
+
+/* Next.js dev mode compiles each route handler with its own module registry,
+ * so module-scoped Maps are not shared between /api/analyze and /api/flow.
+ * Attach the caches to globalThis so every route handler sees the same data in
+ * dev. Production shares a single require cache, so this is equally correct
+ * there. */
+const store: CacheStore =
+  (globalThis as unknown as { __kycAnalysisCache?: CacheStore })
+    .__kycAnalysisCache ??= {
+    analysis: new Map<string, RepoAnalysis>(),
+    keyRepo: new Map<string, string>(),
+    fileIndex: new Map<string, RepoFile[]>(),
+  };
 
 export function getCachedAnalysis(key: string): RepoAnalysis | undefined {
-  return cache.get(key);
+  return store.analysis.get(key);
 }
 
 /** File list for a repoId (owner/repo), indexed during Analyze so other
  *  views can reuse the already-fetched tree without new GitHub calls. */
 export function getCachedFiles(repoId: string): RepoFile[] | null {
-  return fileIndex.get(repoId) ?? null;
+  return store.fileIndex.get(repoId) ?? null;
 }
 
 export function setCachedAnalysis(
@@ -21,23 +36,23 @@ export function setCachedAnalysis(
   repoId: string,
   analysis: RepoAnalysis
 ): void {
-  if (cache.has(key)) return;
-  if (cache.size >= CACHE_SIZE_LIMIT) {
-    const oldestKey = cache.keys().next().value;
+  if (store.analysis.has(key)) return;
+  if (store.analysis.size >= CACHE_SIZE_LIMIT) {
+    const oldestKey = store.analysis.keys().next().value;
     if (oldestKey !== undefined) {
-      cache.delete(oldestKey);
-      keyRepo.delete(oldestKey);
+      store.analysis.delete(oldestKey);
+      store.keyRepo.delete(oldestKey);
     }
   }
-  cache.set(key, analysis);
-  keyRepo.set(key, repoId);
-  fileIndex.set(repoId, analysis.files);
+  store.analysis.set(key, analysis);
+  store.keyRepo.set(key, repoId);
+  store.fileIndex.set(repoId, analysis.files);
 
-  if (fileIndex.size > CACHE_SIZE_LIMIT) {
-    const usedRepoIds = new Set(keyRepo.values());
-    for (const [repoIdKey] of fileIndex) {
-      if (fileIndex.size <= CACHE_SIZE_LIMIT) break;
-      if (!usedRepoIds.has(repoIdKey)) fileIndex.delete(repoIdKey);
+  if (store.fileIndex.size > CACHE_SIZE_LIMIT) {
+    const usedRepoIds = new Set(store.keyRepo.values());
+    for (const [repoIdKey] of store.fileIndex) {
+      if (store.fileIndex.size <= CACHE_SIZE_LIMIT) break;
+      if (!usedRepoIds.has(repoIdKey)) store.fileIndex.delete(repoIdKey);
     }
   }
 }

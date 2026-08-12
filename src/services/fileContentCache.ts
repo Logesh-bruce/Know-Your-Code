@@ -3,7 +3,12 @@ import {
   type GithubRepoRef,
 } from "@/services/githubService";
 
-const contentCache = new Map<string, string>();
+/* Same globalThis rationale as analysisCache: in Next.js dev mode each route
+ * handler gets its own module registry, so a module-scoped Map here would not
+ * be shared between /api/flow and /api/flow/content. */
+const contentCache: Map<string, string> =
+  (globalThis as unknown as { __kycFileContentCache?: Map<string, string> })
+    .__kycFileContentCache ??= new Map<string, string>();
 
 function cacheKey(ref: GithubRepoRef, path: string): string {
   return `${ref.owner}/${ref.repo}::${path}`;
