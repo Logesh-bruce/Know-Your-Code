@@ -271,6 +271,27 @@ export async function fetchFileContent(
   return typeof response.data === "string" ? response.data : "";
 }
 
+export async function getRepoHeadSha(
+  ref: GithubRepoRef,
+  defaultBranch: string
+): Promise<string> {
+  const octokit = createOctokit();
+  const { data } = await withRetry(
+    () =>
+      timed(
+        `git.getRef for ${ref.owner}/${ref.repo}@heads/${defaultBranch}`,
+        () =>
+          octokit.rest.git.getRef({
+            owner: ref.owner,
+            repo: ref.repo,
+            ref: `heads/${defaultBranch}`,
+          })
+      ),
+    `head ref for ${ref.owner}/${ref.repo}`
+  );
+  return data.object.sha;
+}
+
 export async function listRepoFiles(
   ref: GithubRepoRef,
   defaultBranch?: string
