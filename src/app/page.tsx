@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Button from "@/components/Button";
 import Input from "@/components/Input";
 import ProductDemo from "@/components/ProductDemo";
+import ThemeToggle from "@/components/ThemeToggle";
 import { SESSION_KEY, validateRepoUrl } from "@/utils/validation";
 
 function Logo() {
@@ -51,7 +52,10 @@ export default function Home() {
     <main className="min-h-screen bg-bg-primary">
       <div className="mx-auto grid min-h-screen max-w-6xl gap-12 px-6 py-6 lg:grid-cols-[minmax(0,420px)_1fr] lg:gap-16 lg:py-8">
         <section className="flex flex-col justify-center gap-6">
-          <Logo />
+          <div className="flex items-center justify-between">
+            <Logo />
+            <ThemeToggle />
+          </div>
 
           <div className="flex flex-col gap-3">
             <h1 className="text-[32px] font-semibold leading-[1.25] tracking-tight text-text-primary">

@@ -12,6 +12,7 @@ import InterviewView from "@/components/InterviewView";
 import RepoSummary from "@/components/RepoSummary";
 import QuizView from "@/components/QuizView";
 import Tabs from "@/components/Tabs";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useRepoAnalysis, ANALYSIS_STEPS } from "@/hooks/useRepoAnalysis";
 import { buildFileTree } from "@/utils/formatting";
 import type { FileTreeNode } from "@/types/repo";
@@ -219,6 +220,7 @@ export default function DashboardPage() {
             >
               Files
             </button>
+            <ThemeToggle />
             <span className="flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-sm text-text-secondary">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <circle cx="8" cy="8" r="4" stroke="currentColor" />
