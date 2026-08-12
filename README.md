@@ -4,7 +4,7 @@
 
 KnowYourCode is an AI-powered developer tool that analyzes GitHub repositories and helps developers truly understand the code they work with through **code explanations, knowledge tests, and interview practice**.
 
-[![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Visit%20KnowYourCode-black?style=for-the-badge)](YOUR_LIVE_DEMO_URL)
+[![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Visit%20KnowYourCode-black?style=for-the-badge)]([https://know-your-code-rho.vercel.app/])
 
 ---
 
