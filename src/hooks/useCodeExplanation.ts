@@ -13,6 +13,12 @@ interface UseCodeExplanationResult {
   reload: () => Promise<void>;
 }
 
+const explanationCache = new Map<string, CodeExplanation>();
+
+function cacheKey(repoId: string, filePath: string): string {
+  return `${repoId}::${filePath}`;
+}
+
 export function useCodeExplanation(
   repoId: string,
   filePath: string
@@ -28,6 +34,14 @@ export function useCodeExplanation(
       setError(null);
       return;
     }
+    const key = cacheKey(repoId, filePath);
+    const cached = explanationCache.get(key);
+    if (cached) {
+      setStatus("success");
+      setData(cached);
+      setError(null);
+      return;
+    }
     setStatus("loading");
     setData(null);
     setError(null);
@@ -36,6 +50,7 @@ export function useCodeExplanation(
         repoId,
         filePath,
       });
+      explanationCache.set(key, result);
       setData(result);
       setStatus("success");
     } catch (err) {
