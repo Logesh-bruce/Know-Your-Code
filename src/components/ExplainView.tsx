@@ -4,6 +4,7 @@ import { useState } from "react";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import CodeBlock from "@/components/CodeBlock";
+import Skeleton from "@/components/Skeleton";
 import { useCodeExplanation } from "@/hooks/useCodeExplanation";
 
 interface ExplainViewProps {
@@ -39,14 +40,18 @@ export default function ExplainView({
       {/* Code pane */}
       <div className="flex min-w-0 flex-col gap-2">
         {status === "loading" && (
-          <Card className="flex h-64 items-center justify-center">
-            <div className="flex w-full max-w-xs flex-col gap-3">
+          <Card padded={false} className="flex h-64 flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line bg-bg-primary px-3 py-2">
               <span className="truncate font-mono text-xs text-text-secondary">
-                Loading {filePath}…
+                {filePath}
               </span>
-              <div className="h-1 w-full overflow-hidden rounded-full bg-bg-tertiary">
-                <div className="h-full w-1/3 rounded-full bg-accent animate-[indeterminate_1.4s_ease-in-out_infinite]" />
-              </div>
+            </div>
+            <div className="flex-1 space-y-3 p-4">
+              <Skeleton className="h-3 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-3 w-4/5" />
+              <Skeleton className="h-3 w-1/3" />
             </div>
           </Card>
         )}
@@ -98,6 +103,21 @@ export default function ExplainView({
 
       {/* Explanation pane */}
       <div className="min-w-0">
+        {status === "loading" && (
+          <Card className="flex min-h-[240px] flex-col gap-4">
+            <div>
+              <Skeleton className="h-3 w-24" />
+              <div className="mt-2 space-y-2">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-4/6" />
+              </div>
+            </div>
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-3 w-3/5" />
+          </Card>
+        )}
+
         {status === "success" && data && (
           <Card className="flex h-full flex-col gap-5">
             <section>

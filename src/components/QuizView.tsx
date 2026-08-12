@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import ProgressBar from "@/components/ProgressBar";
+import Skeleton from "@/components/Skeleton";
 import { postJson } from "@/utils/api";
 import type { QuizQuestion } from "@/types/quiz";
 
@@ -104,14 +105,18 @@ export default function QuizView({ repoId, onExit }: QuizViewProps) {
 
   if (phase === "loading") {
     return (
-      <Card className="flex h-64 items-center justify-center">
-        <div className="flex w-full max-w-xs flex-col gap-3">
-          <span className="text-sm text-text-secondary">
-            Generating questions…
-          </span>
-          <div className="h-1 w-full overflow-hidden rounded-full bg-bg-tertiary">
-            <div className="h-full w-1/3 rounded-full bg-accent animate-[indeterminate_1.4s_ease-in-out_infinite]" />
-          </div>
+      <Card padded={false} className="mx-auto flex h-64 max-w-2xl flex-col gap-4 p-4">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="h-3 w-16" />
+        </div>
+        <Skeleton className="h-1 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         </div>
       </Card>
     );

@@ -5,6 +5,7 @@ import Button from "@/components/Button";
 import Card from "@/components/Card";
 import ChatBubble from "@/components/ChatBubble";
 import ProgressBar from "@/components/ProgressBar";
+import Skeleton from "@/components/Skeleton";
 import { useInterview } from "@/hooks/useInterview";
 
 interface InterviewViewProps {
@@ -188,8 +189,12 @@ export default function InterviewView({
                 className="h-[380px] overflow-y-auto px-4 py-4"
               >
                 {messages.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-sm text-text-secondary">
-                    Starting the interview…
+                  <div className="flex h-full flex-col justify-center gap-3 px-1">
+                    <Skeleton className="h-10 w-3/4 rounded-lg" />
+                    <Skeleton className="h-3 w-1/3" />
+                    <span className="text-xs text-text-secondary">
+                      Starting the interview…
+                    </span>
                   </div>
                 ) : (
                   <div className="space-y-4">
