@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { RepoAnalysis } from "@/types/repo";
-import { postJson } from "@/utils/api";
+import { postJson, REQUEST_TIMEOUT_MS } from "@/utils/api";
 import { SESSION_KEY } from "@/utils/validation";
 
 export type AnalysisStatus = "idle" | "loading" | "success" | "error";
@@ -28,7 +28,7 @@ export function useRepoAnalysis() {
       const repo = await postJson<RepoAnalysis>(
         "/api/analyze",
         { repoUrl: targetUrl },
-        20_000
+        REQUEST_TIMEOUT_MS
       );
       setState({ status: "success", repo, error: null });
     } catch (err) {

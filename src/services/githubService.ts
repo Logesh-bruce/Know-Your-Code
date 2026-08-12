@@ -80,6 +80,30 @@ function createOctokit(): Octokit {
   return token ? new Octokit({ auth: token }) : new Octokit();
 }
 
+/* --- Startup diagnostics (logged once when this module is first loaded) --- */
+
+console.log(
+  getGithubToken()
+    ? "[KnowYourCode] GITHUB_TOKEN: set"
+    : "[KnowYourCode] GITHUB_TOKEN: MISSING"
+);
+
+/** Times a GitHub API call and logs elapsed ms (diagnostic). */
+async function timed<T>(
+  label: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const start = Date.now();
+  try {
+    const result = await operation();
+    console.log(`[analyze] ${label} took ${Date.now() - start}ms`);
+    return result;
+  } catch (err) {
+    console.log(`[analyze] ${label} failed after ${Date.now() - start}ms`);
+    throw err;
+  }
+}
+
 /* --- Rate-limit detection, backoff and typed failures --- */
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -207,10 +231,14 @@ export async function getRepoMetadata(
   const octokit = createOctokit();
   const { data } = await withRetry(
     () =>
-      octokit.rest.repos.get({
-        owner: ref.owner,
-        repo: ref.repo,
-      }),
+      timed(
+        `repos.get for ${ref.owner}/${ref.repo}`,
+        () =>
+          octokit.rest.repos.get({
+            owner: ref.owner,
+            repo: ref.repo,
+          })
+      ),
     `metadata for ${ref.owner}/${ref.repo}`
   );
   return {
@@ -228,30 +256,41 @@ export async function fetchFileContent(
   const octokit = createOctokit();
   const response = await withRetry(
     () =>
-      octokit.rest.repos.getContent({
-        owner: ref.owner,
-        repo: ref.repo,
-        path,
-        mediaType: { format: "raw" },
-      }),
+      timed(
+        `getContent for ${ref.owner}/${ref.repo}/${path}`,
+        () =>
+          octokit.rest.repos.getContent({
+            owner: ref.owner,
+            repo: ref.repo,
+            path,
+            mediaType: { format: "raw" },
+          })
+      ),
     `content of ${path}`
   );
   return typeof response.data === "string" ? response.data : "";
 }
 
 export async function listRepoFiles(
-  ref: GithubRepoRef
+  ref: GithubRepoRef,
+  defaultBranch?: string
 ): Promise<RepoFile[]> {
   const octokit = createOctokit();
-  const meta = await getRepoMetadata(ref);
+  const meta = defaultBranch
+    ? { defaultBranch }
+    : await getRepoMetadata(ref);
   const tree = await withRetry(
     () =>
-      octokit.rest.git.getTree({
-        owner: ref.owner,
-        repo: ref.repo,
-        tree_sha: meta.defaultBranch,
-        recursive: "1",
-      }),
+      timed(
+        `git.getTree for ${ref.owner}/${ref.repo}@${meta.defaultBranch}`,
+        () =>
+          octokit.rest.git.getTree({
+            owner: ref.owner,
+            repo: ref.repo,
+            tree_sha: meta.defaultBranch,
+            recursive: "1",
+          })
+      ),
     `file tree for ${ref.owner}/${ref.repo}`
   );
 

@@ -29,10 +29,8 @@ export async function POST(request: NextRequest) {
 
     const ref = parseRepoUrl(repoUrl);
     void logGithubRateLimitOnce();
-    const [metadata, files] = await Promise.all([
-      getRepoMetadata(ref),
-      listRepoFiles(ref),
-    ]);
+    const metadata = await getRepoMetadata(ref);
+    const files = await listRepoFiles(ref, metadata.defaultBranch);
 
     const packageJson = await fetchFileContent(ref, "package.json").catch(
       () => undefined

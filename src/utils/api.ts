@@ -1,7 +1,9 @@
+export const REQUEST_TIMEOUT_MS = 45_000;
+
 export async function postJson<T>(
   url: string,
   body: unknown,
-  timeoutMs = 30_000
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
