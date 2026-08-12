@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import clsx from "clsx";
 
 /* ---------------------------------------------------------------------------
  * ProductDemo
@@ -462,7 +463,7 @@ function InterviewScene() {
 
 /* ------------------------------- Root ------------------------------------ */
 
-export default function ProductDemo() {
+export default function ProductDemo({ className }: { className?: string }) {
   const [stepIndex, setStepIndex] = useState(0);
   const step = DEMO_STEPS[stepIndex % DEMO_STEPS.length];
 
@@ -472,7 +473,12 @@ export default function ProductDemo() {
   }, [step]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-line bg-bg-primary shadow-elevated">
+    <div
+      className={clsx(
+        "relative flex w-full flex-col overflow-hidden rounded-lg border border-line bg-bg-primary shadow-elevated",
+        className
+      )}
+    >
       <div className="flex items-center justify-between border-b border-line bg-bg-secondary px-4 py-2.5">
         <div className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57] opacity-90" />
@@ -485,7 +491,7 @@ export default function ProductDemo() {
         <span className="w-10" />
       </div>
 
-      <div className="relative aspect-[16/10] w-full">
+      <div className="relative aspect-[16/10] w-full lg:aspect-auto lg:min-h-0 lg:flex-1">
         {step.scene === "repo" && <RepoScene />}
         {step.scene === "analyze" && <AnalyzeScene />}
         {step.scene === "tree" && <TreeScene />}

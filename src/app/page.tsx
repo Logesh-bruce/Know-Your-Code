@@ -49,55 +49,53 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-bg-primary">
-      <div className="mx-auto grid min-h-screen max-w-6xl gap-12 px-6 py-6 lg:grid-cols-[minmax(0,420px)_1fr] lg:gap-16 lg:py-8">
-        <section className="flex flex-col justify-center gap-6">
-          <div className="flex items-center justify-between">
-            <Logo />
-            <ThemeToggle />
-          </div>
+    <main className="flex min-h-screen w-full flex-col gap-12 overflow-x-hidden bg-bg-primary px-6 py-6 lg:flex-row lg:items-stretch lg:gap-16 lg:px-16 lg:py-12">
+      <section className="flex w-full min-w-0 flex-1 flex-col justify-center gap-6 lg:max-w-xl">
+        <div className="flex items-center justify-between">
+          <Logo />
+          <ThemeToggle />
+        </div>
 
-          <div className="flex flex-col gap-3">
-            <h1 className="text-[32px] font-semibold leading-[1.25] tracking-tight text-text-primary">
-              Prove you understand your own code.
-            </h1>
-            <p className="max-w-[36ch] text-base leading-relaxed text-text-secondary">
-              Paste any GitHub repository. KnowYourCode analyzes your codebase,
-              explains what every file does, tests your knowledge, and
-              interviews you like a senior engineer — so you can prove you
-              actually built it.
-            </p>
-          </div>
-
-          <form onSubmit={analyze} className="flex flex-col gap-2">
-            <Input
-              label="GitHub repository"
-              placeholder="https://github.com/user/repo"
-              value={url}
-              onChange={(e) => {
-                setUrl(e.target.value);
-                if (error) setError(undefined);
-              }}
-              error={error}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <Button type="submit" size="lg" className="mt-1 self-start">
-              Analyze Repository →
-            </Button>
-          </form>
-
-          <p className="text-xs leading-relaxed text-text-secondary">
-            No sign-up. Public repositories only. Your code stays with you.
+        <div className="flex flex-col gap-3">
+          <h1 className="text-[32px] font-semibold leading-[1.25] tracking-tight text-text-primary">
+            Prove you understand your own code.
+          </h1>
+          <p className="max-w-[36ch] text-base leading-relaxed text-text-secondary">
+            Paste any GitHub repository. KnowYourCode analyzes your codebase,
+            explains what every file does, tests your knowledge, and
+            interviews you like a senior engineer — so you can prove you
+            actually built it.
           </p>
-        </section>
+        </div>
 
-        <section className="flex items-center justify-center py-4">
-          <div className="w-full max-w-2xl">
-            <ProductDemo />
-          </div>
-        </section>
-      </div>
+        <form onSubmit={analyze} className="flex flex-col gap-2">
+          <Input
+            label="GitHub repository"
+            placeholder="https://github.com/user/repo"
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              if (error) setError(undefined);
+            }}
+            error={error}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <Button type="submit" size="lg" className="mt-1 self-start">
+            Analyze Repository →
+          </Button>
+        </form>
+
+        <p className="text-xs leading-relaxed text-text-secondary">
+          No sign-up. Public repositories only. Your code stays with you.
+        </p>
+      </section>
+
+      <section className="flex w-full flex-[1.4] items-center justify-center lg:items-stretch">
+        <div className="w-full max-w-2xl lg:h-full lg:max-w-none">
+          <ProductDemo className="lg:h-full" />
+        </div>
+      </section>
     </main>
   );
 }
